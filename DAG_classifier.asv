@@ -1,0 +1,100 @@
+%**************************************************************************
+%函数名称：DAG_classifier()
+%参数：sample：待识别样本特征
+%返回值：y：分类结果
+%函数功能：利用有向无环图支持向量机对测试样本分类
+%**************************************************************************
+function y=DAG_classifier(sample)
+load templet pattern
+d=zeros(10,10);
+sm=zeros(10,10);
+for i=1:10
+    class(i).mu=mean(pattern(i).feature,2);             %各类训练样本的均值中心
+    sum=0;
+    for j=1:pattern(i).num
+        a=(pattern(i).feature(:,j)-class(i).mu).^2;
+        b=0;
+        for k=1:25
+            b=b+a(k);
+        end
+        sum=sum+sqrt(b);
+    end
+    class(i).sigma=1/(pattern(i).num-1)*sum;            %各类的标准差
+end
+for i=1:10
+    for j=1:10
+        a=(class(i).mu-class(j).mu).^2;
+        b=0;
+        for k=1:25
+            b=b+a(k);
+        end
+        d(i,j)=sqrt(b);                                 %第i类和第j类之间的距离
+        sm(i,j)=d(i,j)/(class(i).sigma+class(j).sigma); %第i类和第j类之间的分离性测度
+    end
+end
+
+%首先，分别对每一类与其他9类的分离性测度按从小到大的顺序进行排列，并重新编号****
+for i=1:10
+    A=[sm(i,:);[1,2,3,4,5,6,7,8,9,10]];
+    A=A';
+    B=sortrows(A,1);
+    up_smval(:,i)=B(:,1);
+    up_smpos(:,i)=B(:,2);
+end
+
+%然后根据 up_smval(2,:)的值，按从大到小的顺序，对相应的类别进行排序。**********
+a=[];
+for i=1:10
+    sum=0;
+    for j=2:10
+         sum=sum+up_smval(j,i)*10^(10-j);
+    end
+    a(i)=sum;    % 与其他类分离性的和
+end
+a=[a;[1,2,3,4,5,6,7,8,9,10]];
+a=a';
+b=sortrows(a,-1);
+val=b(:,1);
+pos=b(:,2);
+    
+%最后得到所有类别的排列pos，根据类别号的排序，首尾两个类别的分布性质具有最大差异，
+%建立有向无环图的拓扑结构****************************************************
+patternNum=100;
+for i=1:9
+    for k=10:-1:(i+1)
+        A=pattern(pos(i)).feature(:,1:patternNum);
+        A=A';
+        B=pattern(pos(k)).feature(:,1:patternNum);
+        B=B';
+        x(i,k).feature=[A;B];
+    end    
+end
+for i=1:9
+    for k=10:-1:(i+1)
+        z=ones(1,patternNum*2);
+        z(1:patternNum)=-1;
+        z=z';
+        %进行两类支持向量机训练，结果保存到svmStruct结构中
+        svmStruct(i,k)=svmtrain(x(i,k).feature,z);
+    end
+end
+a=1;
+b=10;
+for i=1:9
+    %支持向量机两类分类
+    G=svmclassify(svmStruct(a,b),sample);
+    if(G==-1)
+        b=b-1;
+    else
+        a=a+1;
+    end
+end
+
+if(G==-1)
+    y=pos(a)-1;
+else
+    y=pos(b)-1;
+end
+
+
+
